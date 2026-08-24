@@ -123,6 +123,24 @@ def test_dense_integer_equivalent_source():
     ) == nx.single_source_shortest_path_length(G, True)
 
 
+def test_dense_integer_weighted_fast_path():
+    G = nx.Graph()
+    G.add_edge(0, 1, weight=2.0)
+    G.add_edge(1, 2)
+    G.add_edge(2, 3, weight=0.25)
+    assert mnx.single_source_dijkstra_path_length(G, 0) == pytest.approx(
+        nx.single_source_dijkstra_path_length(G, 0)
+    )
+
+
+@pytest.mark.parametrize("weight", [2**53 + 1, float("nan"), float("inf")])
+def test_dense_integer_weight_validation(weight):
+    G = nx.Graph()
+    G.add_edge(0, 1, weight=weight)
+    with pytest.raises((TypeError, ValueError), match="edge weight"):
+        mnx.single_source_dijkstra_path_length(G, 0)
+
+
 def test_negative_weight_rejected(graph):
     graph.add_edge("t", "x", weight=-1)
     with pytest.raises(ValueError):

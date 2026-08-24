@@ -1,5 +1,6 @@
 """Sparse graph kernels exposed through a stable C ABI."""
 
+from max.algorithm import parallelize
 from std.math import abs, sqrt
 from std.sys.info import simd_width_of
 
@@ -7,6 +8,7 @@ comptime W = simd_width_of[DType.float64]()
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
 comptime FPtr = UnsafePointer[Float64, AnyOrigin[mut=True]]
 comptime INF = 1.7976931348623157e308
+comptime PARALLEL_INIT_THRESHOLD = 262144
 
 
 def ip(addr: Int) -> IPtr:
@@ -15,6 +17,76 @@ def ip(addr: Int) -> IPtr:
 
 def fp(addr: Int) -> FPtr:
     return FPtr(unsafe_from_address=addr)
+
+
+def fill_i64_pair(a: IPtr, b: IPtr, n: Int, a_value: Int64, b_value: Int64):
+    var vectors = n // W
+    var workers = 4 if n >= PARALLEL_INIT_THRESHOLD else 1
+    var a_vec = SIMD[DType.int64, W](a_value)
+    var b_vec = SIMD[DType.int64, W](b_value)
+
+    @parameter
+    def fill(worker: Int):
+        var first = vectors * worker // workers
+        var end = vectors * (worker + 1) // workers
+        for vector in range(first, end):
+            var offset = vector * W
+            a.store(offset, a_vec)
+            b.store(offset, b_vec)
+
+    if workers > 1:
+        parallelize[fill](workers, workers)
+    else:
+        fill(0)
+    for i in range(vectors * W, n):
+        a[i] = a_value
+        b[i] = b_value
+
+
+def fill_i64(a: IPtr, n: Int, value: Int64):
+    var vectors = n // W
+    var workers = 4 if n >= PARALLEL_INIT_THRESHOLD else 1
+    var value_vec = SIMD[DType.int64, W](value)
+
+    @parameter
+    def fill(worker: Int):
+        var first = vectors * worker // workers
+        var end = vectors * (worker + 1) // workers
+        for vector in range(first, end):
+            a.store(vector * W, value_vec)
+
+    if workers > 1:
+        parallelize[fill](workers, workers)
+    else:
+        fill(0)
+    for i in range(vectors * W, n):
+        a[i] = value
+
+
+def fill_dijkstra_state(dist: FPtr, pred: IPtr, pos: IPtr, n: Int):
+    var vectors = n // W
+    var workers = 4 if n >= PARALLEL_INIT_THRESHOLD else 1
+    var dist_vec = SIMD[DType.float64, W](INF)
+    var minus_one = SIMD[DType.int64, W](-1)
+
+    @parameter
+    def fill(worker: Int):
+        var first = vectors * worker // workers
+        var end = vectors * (worker + 1) // workers
+        for vector in range(first, end):
+            var offset = vector * W
+            dist.store(offset, dist_vec)
+            pred.store(offset, minus_one)
+            pos.store(offset, minus_one)
+
+    if workers > 1:
+        parallelize[fill](workers, workers)
+    else:
+        fill(0)
+    for i in range(vectors * W, n):
+        dist[i] = INF
+        pred[i] = -1
+        pos[i] = -1
 
 
 def heap_swap(heap: IPtr, pos: IPtr, a: Int, b: Int):
@@ -65,10 +137,7 @@ def dijkstra_impl(
     pos: IPtr,
     order: IPtr,
 ) -> Int:
-    for i in range(n):
-        dist[i] = INF
-        pred[i] = -1
-        pos[i] = -1
+    fill_dijkstra_state(dist, pred, pos, n)
     dist[source] = 0.0
     heap[0] = Int64(source)
     pos[source] = 0
@@ -123,9 +192,7 @@ def mnx_bfs(
     var dist = ip(dist_addr)
     var pred = ip(pred_addr)
     var order = ip(order_addr)
-    for i in range(n):
-        dist[i] = -1
-        pred[i] = -1
+    fill_i64_pair(dist, pred, n, -1, -1)
     dist[source] = 0
     queue[0] = Int64(source)
     var head = 0
@@ -228,8 +295,7 @@ def mnx_components(
     var indices = ip(indices_addr)
     var labels = ip(labels_addr)
     var queue = ip(queue_addr)
-    for i in range(n):
-        labels[i] = -1
+    fill_i64(labels, n, -1)
     var component = 0
     for source in range(n):
         if labels[source] >= 0:

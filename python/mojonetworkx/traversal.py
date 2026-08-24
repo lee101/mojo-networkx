@@ -12,7 +12,8 @@ def _bfs(G, source, depth_limit=None, reverse=False, sort_neighbors=None):
     source_i = require_node(data, source)
     n = len(data.nodes)
     limit = n if depth_limit is None else max(0, int(depth_limit))
-    queue, dist, pred, order = (i64(n) for _ in range(4))
+    workspace = i64(4 * n)
+    queue, dist, pred, order = (workspace[i * n:(i + 1) * n] for i in range(4))
     count = lib().mnx_bfs(
         addr(data.indptr), addr(data.indices), n, source_i, limit,
         addr(queue), addr(dist), addr(pred), addr(order),

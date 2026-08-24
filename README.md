@@ -83,17 +83,17 @@ Linux 6.8.0-136-generic, Python 3.13.14:
 
 | case | mojo-networkx | NetworkX | result |
 | --- | ---: | ---: | ---: |
-| `bfs_edges` (BA, 100k nodes / 300k edges) | 272.7 ms | 829.5 ms | 3.04x faster |
-| shortest path lengths (BA, 100k / 300k) | 137.1 ms | 203.2 ms | 1.48x faster |
-| Dijkstra (BA, 50k / 150k weighted) | 551.6 ms | 679.5 ms | 1.23x faster |
-| connected components (100k / 200k) | 142.7 ms | 159.2 ms | 1.12x faster |
-| betweenness centrality (BA, 800 / 2.4k) | 52.1 ms | 1762.1 ms | 33.80x faster |
-| closeness centrality (BA, 2k / 4k) | 91.7 ms | 2279.3 ms | 24.84x faster |
-| PageRank (directed BA, 100k / 600k arcs) | 1290.3 ms | 1151.5 ms | 1.12x slower |
-| eigenvector centrality (BA, 100k / 300k) | 733.8 ms | 44857.0 ms | 61.13x faster |
+| `bfs_edges` (BA, 100k nodes / 300k edges) | 164.3 ms | 343.8 ms | 2.09x faster |
+| shortest path lengths (BA, 100k / 300k) | 119.3 ms | 147.5 ms | 1.24x faster |
+| Dijkstra (BA, 50k / 150k weighted) | 193.1 ms | 364.9 ms | 1.89x faster |
+| connected components (100k / 200k) | 77.0 ms | 82.4 ms | 1.07x faster |
+| betweenness centrality (BA, 800 / 2.4k) | 45.6 ms | 1695.1 ms | 37.20x faster |
+| closeness centrality (BA, 2k / 4k) | 87.0 ms | 2315.5 ms | 26.61x faster |
+| PageRank (directed BA, 100k / 600k arcs) | 261.9 ms | 1070.1 ms | 4.09x faster |
+| eigenvector centrality (BA, 100k / 300k) | 270.4 ms | 24771.5 ms | 91.60x faster |
 
-These are honest whole-call numbers, not isolated kernel timings. PageRank was
-slightly slower in this run; benchmark results vary with system load.
+These are honest whole-call numbers, not isolated kernel timings. Benchmark
+results vary with system load.
 
 No GPU path is provided. The covered sparse graph kernels perform well below
 two floating-point operations per byte moved, and their irregular gathers and
@@ -105,7 +105,8 @@ The Python layer maps arbitrary nodes to dense integer IDs and flattens
 adjacency into three contiguous NumPy buffers: `int64` CSR offsets, `int64`
 neighbor IDs, and `float64` weights. Parallel edges use their minimum weight
 for shortest-path algorithms and their summed weight for PageRank and
-eigenvector centrality, matching NetworkX.
+eigenvector centrality, matching NetworkX. Dense integer weighted graphs stream
+directly into final NumPy CSR buffers without intermediate Python edge lists.
 
 One `ctypes` call passes buffer addresses and extents to
 `src/kernels.mojo`. Exported functions use `@export("name")` with `abi("C")`;
@@ -118,9 +119,11 @@ cross-boundary ownership and lifetimes remain unambiguous.
 Traversal uses iterative queues/stacks, Dijkstra uses an indexed binary heap,
 strong components use iterative Kosaraju, and betweenness uses Brandes'
 dependency accumulation. PageRank and eigenvector centrality are sparse
-power-iteration kernels. All kernels live in one compilation unit because the
-fixed Mojo shared-library build cost is much larger than the marginal cost of
-another exported function.
+power-iteration kernels. BFS, Dijkstra, and component state initialization use
+SIMD stores with scalar remainder loops; arrays of at least 262,144 elements split
+that independent initialization across four CPU workers. All kernels live in one
+compilation unit because the fixed Mojo shared-library build cost is much larger
+than the marginal cost of another exported function.
 
 ## License
 

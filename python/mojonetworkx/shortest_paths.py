@@ -66,7 +66,8 @@ def _dijkstra(G, source, cutoff=None, weight="weight", reverse=False):
         raise ValueError("Contradictory paths found: negative weights?")
     n = len(data.nodes)
     dist = f64(n)
-    pred, heap, pos, order = (i64(n) for _ in range(4))
+    workspace = i64(4 * n)
+    pred, heap, pos, order = (workspace[i * n:(i + 1) * n] for i in range(4))
     limit = math.inf if cutoff is None else float(cutoff)
     count = lib().mnx_dijkstra(
         addr(data.indptr), addr(data.indices), addr(data.weights), n, source_i, limit,

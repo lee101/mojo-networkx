@@ -20,6 +20,10 @@ class CSR:
 
 
 def _float64_weight(value) -> float:
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError(f"edge weight {value!r} must be finite")
+        return value
     if not isinstance(value, Real):
         raise TypeError(f"edge weight {value!r} cannot be represented as float64")
     converted = float(value)
@@ -74,7 +78,9 @@ def csr(
     multigraph = G.is_multigraph()
     unit_weights = weight is None and (not multigraph or aggregate_parallel != "sum")
 
-    if not (undirected and directed) and sort_neighbors is None and unit_weights and identity_index:
+    if not (undirected and directed) and sort_neighbors is None and identity_index and (
+        unit_weights or (not multigraph and not callable(weight))
+    ):
         adjacency = G._pred if reverse and directed else G._adj
         degrees = np.fromiter(
             (len(row) for row in adjacency.values()), dtype=np.int64, count=len(nodes)
@@ -89,7 +95,20 @@ def csr(
         )
         if not len(indices):
             indices = np.empty(1, dtype=np.int64)[:0]
-        weights = np.ones(max(1, len(indices)), dtype=np.float64)[:len(indices)]
+        if unit_weights:
+            weights = np.ones(max(1, len(indices)), dtype=np.float64)[:len(indices)]
+        else:
+            weights = np.fromiter(
+                (
+                    _float64_weight(data.get(weight, 1.0))
+                    for row in adjacency.values()
+                    for data in row.values()
+                ),
+                dtype=np.float64,
+                count=len(indices),
+            )
+            if not len(weights):
+                weights = np.empty(1, dtype=np.float64)[:0]
         return CSR(nodes, index, indptr, indices, weights)
 
     if undirected and directed:

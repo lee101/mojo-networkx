@@ -10,7 +10,8 @@ from ._lib import addr, i64, lib
 def _labels(G, weak=False):
     data = csr(G, undirected=weak)
     n = len(data.nodes)
-    labels, queue = i64(n), i64(n)
+    workspace = i64(2 * n)
+    labels, queue = workspace[:n], workspace[n:]
     count = lib().mnx_components(
         addr(data.indptr), addr(data.indices), n, addr(labels), addr(queue)
     )
