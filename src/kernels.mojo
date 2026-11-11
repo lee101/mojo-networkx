@@ -637,8 +637,8 @@ def mnx_pagerank(
         var error_vec = SIMD[DType.float64, W](0.0)
         i = 0
         while i + W <= n:
-            var next_vec = next.load[width=W](i)
-            error_vec += abs(next_vec - rank.load[width=W](i))
+            var next_vec = next.unsafe_load[width=W](i)
+            error_vec += abs(next_vec - rank.unsafe_load[width=W](i))
             rank.store(i, next_vec)
             i += W
         var error = error_vec.reduce_add()
